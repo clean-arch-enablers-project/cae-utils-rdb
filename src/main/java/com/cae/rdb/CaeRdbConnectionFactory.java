@@ -10,7 +10,7 @@ public abstract class CaeRdbConnectionFactory {
 
     private SessionFactory sessionFactory;
 
-    protected abstract List<DefaultBasicCrudOperations<? extends TableSchema<?>, ?>> initializeAllRepositories();
+    protected abstract List<DefaultBasicCrudOperations<? extends TableSchema<?>, ?>> initializeAllDataAccessObjects();
     protected abstract String getJdbcUrl();
     protected abstract String getDbUser();
     protected abstract String getDbUserSecret();
@@ -24,7 +24,7 @@ public abstract class CaeRdbConnectionFactory {
 
     public void startConnection(){
         if (this.sessionFactory == null){
-            var allRepositories = this.initializeAllRepositories();
+            var allRepositories = this.initializeAllDataAccessObjects();
             this.sessionFactory = HibernateConfigBootstrap.createNewBasedOn(this);
             allRepositories.forEach(repository -> repository.entityManagerFactory = this.sessionFactory);
         }
