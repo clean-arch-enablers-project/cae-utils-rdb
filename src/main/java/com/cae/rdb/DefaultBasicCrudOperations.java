@@ -33,7 +33,8 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
     private static <I, T extends TableSchema<I>> void mapGenericTypes(DefaultBasicCrudOperations<T,I> instance) {
         try{
             Type superClass = instance.getClass().getGenericSuperclass();
-            if (superClass instanceof ParameterizedType typeWithGenericParameters) {
+            if (superClass instanceof ParameterizedType) {
+                var typeWithGenericParameters = (ParameterizedType) superClass;
                 instance.entityType = (Class<T>) typeWithGenericParameters.getActualTypeArguments()[0];
                 instance.entityName = Optional.ofNullable(instance.entityType.getAnnotation(Entity.class))
                         .orElseThrow(() -> new InternalMappedException(
