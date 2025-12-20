@@ -5,6 +5,7 @@ import com.cae.context.ExecResource;
 import com.cae.context.ExecutionContext;
 import com.cae.mapped_exceptions.specifics.InternalMappedException;
 import com.cae.rdb.operations.BasicCrudOperations;
+import com.cae.rdb.queries.Param;
 import com.cae.rdb.tables.TableSchema;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
@@ -81,12 +82,12 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public void createNew(T instance) {
-        this.runWriteOnStandaloneManager(this.getCreatingActionFor(instance));
+        this.writeOnStandaloneManager(this.getCreatingActionFor(instance));
     }
 
     @Override
     public void createNew(T instance, ExecutionContext executionContext) {
-        this.runWriteOnSharedManager(this.getCreatingActionFor(instance), executionContext);
+        this.writeOnSharedManager(this.getCreatingActionFor(instance), executionContext);
     }
 
     protected Consumer<EntityManager> getDeletingActionFor(I primaryKey){
@@ -103,12 +104,12 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public void deleteById(I primaryKey) {
-        this.runWriteOnStandaloneManager(this.getDeletingActionFor(primaryKey));
+        this.writeOnStandaloneManager(this.getDeletingActionFor(primaryKey));
     }
 
     @Override
     public void deleteById(I primaryKey, ExecutionContext executionContext) {
-        this.runWriteOnSharedManager(this.getDeletingActionFor(primaryKey), executionContext);
+        this.writeOnSharedManager(this.getDeletingActionFor(primaryKey), executionContext);
     }
 
     protected Function<EntityManager, Optional<T>> getFindingByIdActionFor(I primaryKey){
@@ -120,17 +121,17 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public Optional<T> findById(I primaryKey) {
-        return this.runReadOnStandaloneManager(this.getFindingByIdActionFor(primaryKey));
+        return this.readOnStandaloneManager(this.getFindingByIdActionFor(primaryKey));
     }
 
     @Override
     public Optional<T> findById(I primaryKey, ExecutionContext executionContext) {
-        return this.runReadOnSharedManager(this.getFindingByIdActionFor(primaryKey), executionContext, false);
+        return this.readOnSharedManager(this.getFindingByIdActionFor(primaryKey), executionContext, false);
     }
 
     @Override
     public Optional<T> findById(I primaryKey, ExecutionContext executionContext, boolean transactional) {
-        return this.runReadOnSharedManager(this.getFindingByIdActionFor(primaryKey), executionContext, transactional);
+        return this.readOnSharedManager(this.getFindingByIdActionFor(primaryKey), executionContext, transactional);
     }
 
     @Override
@@ -157,17 +158,17 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public List<T> retrieveAll() {
-        return this.runReadOnStandaloneManager(this.getRetrievingAllAction());
+        return this.readOnStandaloneManager(this.getRetrievingAllAction());
     }
 
     @Override
     public List<T> retrieveAll(ExecutionContext executionContext) {
-        return this.runReadOnSharedManager(this.getRetrievingAllAction(), executionContext, false);
+        return this.readOnSharedManager(this.getRetrievingAllAction(), executionContext, false);
     }
 
     @Override
     public List<T> retrieveAll(ExecutionContext executionContext, boolean transactional) {
-        return this.runReadOnSharedManager(this.getRetrievingAllAction(), executionContext, transactional);
+        return this.readOnSharedManager(this.getRetrievingAllAction(), executionContext, transactional);
     }
 
     protected Function<EntityManager, Page<T>> getRetrievingPaginatedActionFor(Integer pageNumber, Integer pageSize){
@@ -193,17 +194,17 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public Page<T> retrievePaginated(Integer pageNumber, Integer pageSize) {
-        return this.runReadOnStandaloneManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize));
+        return this.readOnStandaloneManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize));
     }
 
     @Override
     public Page<T> retrievePaginated(Integer pageNumber, Integer pageSize, ExecutionContext executionContext) {
-        return this.runReadOnSharedManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize), executionContext, false);
+        return this.readOnSharedManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize), executionContext, false);
     }
 
     @Override
     public Page<T> retrievePaginated(Integer pageNumber, Integer pageSize, ExecutionContext executionContext, boolean transactional) {
-        return this.runReadOnSharedManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize), executionContext, transactional);
+        return this.readOnSharedManager(this.getRetrievingPaginatedActionFor(pageNumber, pageSize), executionContext, transactional);
     }
 
     protected Function<EntityManager, T> getMergingActionFor(T instanceToMerge){
@@ -212,12 +213,12 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public T merge(T instanceToMerge) {
-        return this.runWriteOnStandaloneManagerReturning(this.getMergingActionFor(instanceToMerge));
+        return this.writeOnStandaloneManagerReturning(this.getMergingActionFor(instanceToMerge));
     }
 
     @Override
     public T merge(T instance, ExecutionContext executionContext) {
-        return this.runWriteOnSharedManagerReturning(this.getMergingActionFor(instance), executionContext);
+        return this.writeOnSharedManagerReturning(this.getMergingActionFor(instance), executionContext);
     }
 
     protected Consumer<EntityManager> getPatchingActionFor(I primaryKey, Consumer<T> patchingAction){
@@ -233,19 +234,43 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
 
     @Override
     public void patch(I primaryKey, Consumer<T> patchingAction){
-        this.runWriteOnStandaloneManager(this.getPatchingActionFor(primaryKey, patchingAction));
+        this.writeOnStandaloneManager(this.getPatchingActionFor(primaryKey, patchingAction));
     }
 
     @Override
     public void patch(I primaryKey, Consumer<T> patchingAction, ExecutionContext executionContext){
-        this.runWriteOnSharedManager(this.getPatchingActionFor(primaryKey, patchingAction), executionContext);
+        this.writeOnSharedManager(this.getPatchingActionFor(primaryKey, patchingAction), executionContext);
     }
 
     protected EntityManager initializeEntityManager(){
         return this.getEntityManagerFactoryOrThrow().createEntityManager();
     }
 
-    protected <O> O runReadOnStandaloneManager(Function<EntityManager, O> action){
+    protected Optional<T> readOnStandaloneManagerReturningOptional(String jpql, List<Param> params, ExecutionContext context){
+        Function<EntityManager, T> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getSingleResult();
+        };
+        return Optional.ofNullable(this.readOnStandaloneManager(action));
+    }
+
+    protected List<T> readOnStandaloneManagerReturningList(String jpql, List<Param> params, ExecutionContext context){
+        Function<EntityManager, List<T>> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getResultList();
+        };
+        return this.readOnStandaloneManager(action);
+    }
+
+    protected <O> O readOnStandaloneManager(Function<EntityManager, O> action){
         try (var manager = this.initializeEntityManager()){
             try {
                 return action.apply(manager);
@@ -259,7 +284,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected void runWriteOnStandaloneManager(Consumer<EntityManager> action){
+    protected void writeOnStandaloneManager(Consumer<EntityManager> action){
         try (var manager = this.initializeEntityManager()){
             EntityTransaction transaction = null;
             try {
@@ -278,7 +303,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected  <O> O runWriteOnStandaloneManagerReturning(Function<EntityManager, O> action){
+    protected  <O> O writeOnStandaloneManagerReturning(Function<EntityManager, O> action){
         try (var manager = this.initializeEntityManager()){
             EntityTransaction transaction = null;
             try {
@@ -298,12 +323,12 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected void runWriteOnSharedManager(Consumer<EntityManager> action, ExecutionContext executionContext){
+    protected void writeOnSharedManager(Consumer<EntityManager> action, ExecutionContext executionContext){
         var entityManager = this.getOrInitializeSharedManagerFor(executionContext);
-        this.runWriteOnSharedManager(action, entityManager);
+        this.writeOnSharedManager(action, entityManager);
     }
 
-    protected void runWriteOnSharedManager(Consumer<EntityManager> action, EntityManager entityManager){
+    protected void writeOnSharedManager(Consumer<EntityManager> action, EntityManager entityManager){
         try {
             this.safelyAttemptToBegin(entityManager.getTransaction());
             action.accept(entityManager);
@@ -316,12 +341,12 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected  <O> O runWriteOnSharedManagerReturning(Function<EntityManager, O> action, ExecutionContext executionContext) {
+    protected  <O> O writeOnSharedManagerReturning(Function<EntityManager, O> action, ExecutionContext executionContext) {
         var entityManager = this.getOrInitializeSharedManagerFor(executionContext);
-        return this.runWriteOnSharedManagerReturning(action, entityManager);
+        return this.writeOnSharedManagerReturning(action, entityManager);
     }
 
-    protected  <O> O runWriteOnSharedManagerReturning(Function<EntityManager, O> action, EntityManager entityManager) {
+    protected  <O> O writeOnSharedManagerReturning(Function<EntityManager, O> action, EntityManager entityManager) {
         try {
             this.safelyAttemptToBegin(entityManager.getTransaction());
             return action.apply(entityManager);
@@ -334,12 +359,36 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected <O> O runReadOnSharedManager(Function<EntityManager, O> action, ExecutionContext executionContext, boolean transactional){
-        var entityManager = this.getOrInitializeSharedManagerFor(executionContext);
-        return this.runReadOnSharedManager(action, entityManager, transactional);
+    protected Optional<T> readOnSharedManagerReturningOptional(String jpql, List<Param> params, ExecutionContext context){
+        Function<EntityManager, T> action = em -> {
+            var query = em.createQuery(
+                jpql,
+                this.getEntityType()
+            );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getSingleResult();
+        };
+        return Optional.ofNullable(this.readOnSharedManager(action, context, false));
     }
 
-    protected <O> O runReadOnSharedManager(Function<EntityManager, O> action, EntityManager entityManager, boolean transactional){
+    protected List<T> readOnSharedManagerReturningList(String jpql, List<Param> params, ExecutionContext context){
+        Function<EntityManager, List<T>> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getResultList();
+        };
+        return this.readOnSharedManager(action, context, false);
+    }
+
+    protected <O> O readOnSharedManager(Function<EntityManager, O> action, ExecutionContext executionContext, boolean transactional){
+        var entityManager = this.getOrInitializeSharedManagerFor(executionContext);
+        return this.readOnSharedManager(action, entityManager, transactional);
+    }
+
+    protected <O> O readOnSharedManager(Function<EntityManager, O> action, EntityManager entityManager, boolean transactional){
         try {
             if (transactional)
                 this.safelyAttemptToBegin(entityManager.getTransaction());
