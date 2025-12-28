@@ -3,7 +3,7 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <name>cae-rdb</name>
+    <name>CAE Relational Databases</name>
     <description>Library for relational-database integration</description>
     <url>https://github.com/clean-arch-enablers-project/cae-utils-rdb/blob/main/README.md</url>
     <groupId>com.clean-arch-enablers</groupId>
@@ -37,6 +37,11 @@
         <dependency>
             <groupId>com.clean-arch-enablers</groupId>
             <artifactId>cae-context</artifactId>
+            <version>6.0.0-RC1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.clean-arch-enablers</groupId>
+            <artifactId>cae-scheduler</artifactId>
             <version>6.0.0-RC1</version>
         </dependency>
         <dependency>

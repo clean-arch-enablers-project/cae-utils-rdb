@@ -31,7 +31,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
     }
 
     @SuppressWarnings("unchecked")
-    private static <I, T extends TableSchema<I>> void mapGenericTypes(DefaultBasicCrudOperations<T,I> instance) {
+    protected static <I, T extends TableSchema<I>> void mapGenericTypes(DefaultBasicCrudOperations<T,I> instance) {
         try{
             Type superClass = instance.getClass().getGenericSuperclass();
             if (superClass instanceof ParameterizedType) {
@@ -54,14 +54,14 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    private static <A extends TableSchema<I>, I> void registerEntity(DefaultBasicCrudOperations<A, I> instance) {
+    protected static <A extends TableSchema<I>, I> void registerEntity(DefaultBasicCrudOperations<A, I> instance) {
         EntityClassesProvider.addEntityClass(instance.entityType);
     }
 
     @Getter(AccessLevel.PROTECTED)
-    private Class<T> entityType;
+    protected Class<T> entityType;
     @Getter(AccessLevel.PROTECTED)
-    private String entityName;
+    protected String entityName;
 
     protected EntityManagerFactory entityManagerFactory;
 
@@ -246,24 +246,37 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         return this.getEntityManagerFactoryOrThrow().createEntityManager();
     }
 
-    protected Optional<T> readOnStandaloneManagerReturningOptional(String jpql, List<Param> params, ExecutionContext context){
+    protected Optional<T> readOnStandaloneManagerReturningOptional(String jpql, List<Param> params){
         Function<EntityManager, T> action = em -> {
             var query = em.createQuery(
                     jpql,
                     this.getEntityType()
             );
             params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
-            return query.getSingleResult();
+            return query.getResultList().stream().findFirst().orElse(null);
         };
         return Optional.ofNullable(this.readOnStandaloneManager(action));
     }
 
-    protected List<T> readOnStandaloneManagerReturningList(String jpql, List<Param> params, ExecutionContext context){
+    protected List<T> readOnStandaloneManagerReturningList(String jpql, List<Param> params){
         Function<EntityManager, List<T>> action = em -> {
             var query = em.createQuery(
                     jpql,
                     this.getEntityType()
             );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getResultList();
+        };
+        return this.readOnStandaloneManager(action);
+    }
+
+    protected List<T> readOnStandaloneManagerReturningList(String jpql, List<Param> params, Integer limit){
+        Function<EntityManager, List<T>> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            Optional.ofNullable(limit).ifPresent(query::setMaxResults);
             params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
             return query.getResultList();
         };
@@ -366,7 +379,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
                 this.getEntityType()
             );
             params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
-            return query.getSingleResult();
+            return query.getResultList().stream().findFirst().orElse(null);
         };
         return Optional.ofNullable(this.readOnSharedManager(action, context, false));
     }
@@ -450,7 +463,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         });
     }
 
-    private void safelyRollback(EntityTransaction transaction) {
+    protected void safelyRollback(EntityTransaction transaction) {
         Optional.ofNullable(transaction).ifPresent(trans -> {
             try {if (trans.isActive()) trans.rollback();}
             catch (Exception exception) {throw new InternalMappedException(
