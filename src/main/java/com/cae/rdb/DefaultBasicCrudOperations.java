@@ -396,6 +396,19 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         return this.readOnSharedManager(action, context, false);
     }
 
+    protected List<T> readOnSharedManagerReturningList(String jpql, List<Param> params, Integer limit, ExecutionContext context){
+        Function<EntityManager, List<T>> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            Optional.ofNullable(limit).ifPresent(query::setMaxResults);
+            return query.getResultList();
+        };
+        return this.readOnSharedManager(action, context, false);
+    }
+
     protected <O> O readOnSharedManager(Function<EntityManager, O> action, ExecutionContext executionContext, boolean transactional){
         var entityManager = this.getOrInitializeSharedManagerFor(executionContext);
         return this.readOnSharedManager(action, entityManager, transactional);
