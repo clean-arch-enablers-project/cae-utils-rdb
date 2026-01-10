@@ -3,10 +3,26 @@ package com.cae.rdb.queries;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class Params {
+
+    private final List<Param> params = new ArrayList<>();
+
+    public static Params builder() {
+        return new Params();
+    }
+
+    public void add(String field, Object value) {
+        this.params.add(Param.of(field, value));
+    }
+
+    public List<Param> build() {
+        return Collections.unmodifiableList(params);
+    }
 
     public static List<Param> of(String field1, Object value1){
         return List.of(Param.of(field1, value1));
