@@ -8,12 +8,12 @@
     <url>https://github.com/clean-arch-enablers-project/cae-utils-rdb/blob/main/README.md</url>
     <groupId>com.clean-arch-enablers</groupId>
     <artifactId>cae-rdb</artifactId>
-    <version>6.0.0-RC3</version>
+    <version>6.0.0-RC4</version>
     <packaging>jar</packaging>
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
         </license>
     </licenses>
     <scm>

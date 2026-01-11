@@ -16,19 +16,19 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I> e
         return this.writeOnStandaloneManagerReturning(entityManager -> {
             if (batchSize <= 0) return List.of();
             var selectSql = this.generateSelectForUpdateSkippingLockedItemsCommandInNativeSql();
-            var primaryKeys = entityManager.createNativeQuery(selectSql)
+            var outboxEventIds = entityManager.createNativeQuery(selectSql)
                     .setParameter(1, this.getTtlSeconds())
                     .setParameter(2, batchSize)
                     .getResultList();
-            if (primaryKeys.isEmpty()) return List.of();
+            if (outboxEventIds.isEmpty()) return List.of();
             var updateSql = this.generateUpdateItemsToClaimedCommandInNativeSql();
             entityManager.createNativeQuery(updateSql)
-                    .setParameter("primaryKeys", primaryKeys)
+                    .setParameter("outboxEventIds", outboxEventIds)
                     .executeUpdate();
             var fetchSql = this.generateFinalFetchCommandInNativeSql();
             @SuppressWarnings("unchecked")
             var events = (List<T>) entityManager.createNativeQuery(fetchSql, this.getEntityType())
-                    .setParameter("primaryKeys", primaryKeys)
+                    .setParameter("outboxEventIds", outboxEventIds)
                     .getResultList();
             return events;
         });
@@ -37,15 +37,15 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I> e
     protected abstract int getTtlSeconds();
 
     protected String generateSelectForUpdateSkippingLockedItemsCommandInNativeSql(){
-        return "SELECT primaryKey FROM "+ this.getEntityName() +" WHERE claimed = 0 OR (claimed = 1 AND claimedAt < (NOW(6) - INTERVAL ? SECOND)) ORDER BY insertedAt LIMIT ? FOR UPDATE SKIP LOCKED";
+        return "SELECT outboxEventId FROM "+ this.getEntityName() +" WHERE outboxEventClaimed = 0 OR (outboxEventClaimed = 1 AND outboxEventClaimedAt < (NOW(6) - INTERVAL ? SECOND)) ORDER BY outboxEventInsertedAt LIMIT ? FOR UPDATE SKIP LOCKED";
     }
 
     protected String generateUpdateItemsToClaimedCommandInNativeSql(){
-        return "UPDATE "+ this.getEntityName() +" SET claimed = 1, claimedAt = NOW(6) WHERE primaryKey IN (:primaryKeys)";
+        return "UPDATE "+ this.getEntityName() +" SET outboxEventClaimed = 1, outboxEventClaimedAt = NOW(6) WHERE outboxEventId IN (:outboxEventIds)";
     }
 
     protected String generateFinalFetchCommandInNativeSql(){
-        return "SELECT * FROM "+ this.getEntityName() +" WHERE primaryKey IN (:primaryKeys)";
+        return "SELECT * FROM "+ this.getEntityName() +" WHERE outboxEventId IN (:outboxEventIds)";
     }
 
 }

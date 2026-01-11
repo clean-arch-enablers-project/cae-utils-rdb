@@ -2,14 +2,16 @@ package com.cae.rdb.tables;
 
 import java.time.Instant;
 
-public interface OutboxItem<I> extends TableSchema<I> {
+public interface OutboxItem<I> extends TableSchema {
 
-    void setInsertedAt(Instant instant);
-    Instant getInsertedAt();
-    void setClaimed(Boolean claimed);
-    Boolean getClaimed();
-    void setClaimedAt(Instant instant);
-    Instant getClaimedAt();
-
-
+    I getOutboxEventId();
+    void setOutboxEventId(I primaryKey);
+    void setOutboxEventInsertedAt(Instant instant);
+    Instant getOutboxEventInsertedAt();
+    void setOutboxEventClaimed(Boolean claimed);
+    Boolean getOutboxEventClaimed();
+    void setOutboxEventClaimedAt(Instant instant);
+    Instant getOutboxEventClaimedAt();
+    String getOutboxEventPayload();
+    void setOutboxEventPayload(String payload);
 }

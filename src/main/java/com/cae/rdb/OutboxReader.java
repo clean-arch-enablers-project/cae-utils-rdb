@@ -47,10 +47,10 @@ public abstract class OutboxReader<E extends OutboxItem<I>, I> extends DefaultSc
             var problemsPerBatch = new ArrayList<StreamingProblem>();
             for (var item : currentBatch){
                 try{
-                    this.outboxStreamer.stream(item);
-                    this.dao.deleteById(item.getPrimaryKey());
+                    this.outboxStreamer.stream(item.getOutboxEventPayload());
+                    this.dao.deleteById(item.getOutboxEventId());
                 } catch (Exception exception){
-                    problemsPerBatch.add(new StreamingProblem(exception, item.getPrimaryKey()));
+                    problemsPerBatch.add(new StreamingProblem(exception, item.getOutboxEventId()));
                 }
             }
             if (!currentBatch.isEmpty())

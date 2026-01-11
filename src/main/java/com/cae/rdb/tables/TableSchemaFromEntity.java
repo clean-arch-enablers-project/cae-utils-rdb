@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public abstract class TableSchemaFromEntity<E, I> implements TableSchema<I> {
+public abstract class TableSchemaFromEntity<E> implements TableSchema {
 
     private final E entity;
 

@@ -10,7 +10,7 @@ public abstract class CaeRdbConnectionFactory {
 
     private SessionFactory sessionFactory;
 
-    protected abstract List<DefaultBasicCrudOperations<? extends TableSchema<?>, ?>> initializeAllDataAccessObjects();
+    protected abstract List<DefaultBasicCrudOperations<? extends TableSchema, ?>> initializeAllDataAccessObjects();
     protected abstract String getJdbcUrl();
     protected abstract String getDbUser();
     protected abstract String getDbUserSecret();

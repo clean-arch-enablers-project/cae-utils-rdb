@@ -21,7 +21,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> implements BasicCrudOperations<T, I> {
+public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> implements BasicCrudOperations<T, I> {
 
     public static final String RESOURCE_KEY = "CAE_RDB_CONNECTION_RESOURCE";
 
@@ -31,7 +31,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
     }
 
     @SuppressWarnings("unchecked")
-    protected static <I, T extends TableSchema<I>> void mapGenericTypes(DefaultBasicCrudOperations<T,I> instance) {
+    protected static <I, T extends TableSchema> void mapGenericTypes(DefaultBasicCrudOperations<T,I> instance) {
         try{
             Type superClass = instance.getClass().getGenericSuperclass();
             if (superClass instanceof ParameterizedType) {
@@ -54,7 +54,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema<I>, I> im
         }
     }
 
-    protected static <A extends TableSchema<I>, I> void registerEntity(DefaultBasicCrudOperations<A, I> instance) {
+    protected static <A extends TableSchema, I> void registerEntity(DefaultBasicCrudOperations<A, I> instance) {
         EntityClassesProvider.addEntityClass(instance.entityType);
     }
 
