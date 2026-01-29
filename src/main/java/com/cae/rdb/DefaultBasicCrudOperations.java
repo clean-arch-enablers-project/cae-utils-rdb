@@ -11,6 +11,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -200,7 +201,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     private String findIdFieldName() {
         Class<?> currentClass = this.entityType;
         while (currentClass != null) {
-            for (java.lang.reflect.Field field : currentClass.getDeclaredFields()) {
+            for (Field field : currentClass.getDeclaredFields()) {
                 if (field.isAnnotationPresent(Id.class)) {
                     if (field.isAnnotationPresent(Column.class)) {
                         var name = field.getAnnotation(Column.class).name();
