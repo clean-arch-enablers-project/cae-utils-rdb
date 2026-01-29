@@ -136,6 +136,34 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
         this.writeOnSharedManager(this.getBatchDeletingActionFor(ids), executionContext);
     }
 
+    protected Consumer<EntityManager> getBatchCreatingActionFor(List<T> instances) {
+        return manager -> {
+            if (instances == null || instances.isEmpty()) {
+                return;
+            }
+
+            final int batchSize = 30;
+
+            for (int i = 0; i < instances.size(); i++) {
+                manager.persist(instances.get(i));
+                if (i > 0 && i % batchSize == 0) {
+                    manager.flush();
+                    manager.close();
+                }
+            }
+        };
+    }
+
+    @Override
+    public void batchCreate(List<T> instances) {
+        this.writeOnStandaloneManager(this.getBatchCreatingActionFor(instances));
+    }
+
+    @Override
+    public void batchCreate(List<T> instances, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchCreatingActionFor(instances), executionContext);
+    }
+
     private String findIdFieldName() {
         Class<?> currentClass = this.entityType;
         while (currentClass != null) {
