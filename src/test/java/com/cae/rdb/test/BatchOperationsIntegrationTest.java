@@ -199,4 +199,86 @@ public class BatchOperationsIntegrationTest {
         // Then
         assertEquals(0, testEntityRepository.retrieveAll().size()); // No change expected
     }
+
+    @Test
+    void shouldBatchMergeUpdatingEntities() {
+        // Given: Create initial entities
+        List<TestEntity> initialEntities = LongStream.rangeClosed(1, 3)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(initialEntities);
+
+        // When: Modify entities and merge
+        List<TestEntity> updatedEntities = initialEntities.stream()
+                .peek(entity -> entity.setName("Updated Name " + entity.getId()))
+                .collect(Collectors.toList());
+        testEntityRepository.batchMerge(updatedEntities);
+
+        // Then: Verify entities were updated
+        assertEquals(3, testEntityRepository.retrieveAll().size());
+        TestEntity updatedEntity1 = testEntityRepository.findById(1L).orElseThrow();
+        assertEquals("Updated Name 1", updatedEntity1.getName());
+        TestEntity updatedEntity3 = testEntityRepository.findById(3L).orElseThrow();
+        assertEquals("Updated Name 3", updatedEntity3.getName());
+    }
+
+    @Test
+    void shouldBatchMergeCreatingAndUpdatingEntities() {
+        // Given: Create initial entities
+        List<TestEntity> initialEntities = LongStream.rangeClosed(1, 2)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(initialEntities);
+
+        // When: Prepare a mixed list of new and updated entities
+        TestEntity entityToUpdate = testEntityRepository.findById(1L).orElseThrow();
+        entityToUpdate.setName("Updated Name 1");
+
+        TestEntity newEntity = new TestEntity();
+        newEntity.setId(3L);
+        newEntity.setName("New Entity 3");
+
+        List<TestEntity> mixedList = List.of(entityToUpdate, newEntity);
+        testEntityRepository.batchMerge(mixedList);
+
+        // Then: Verify state
+        assertEquals(3, testEntityRepository.retrieveAll().size());
+        TestEntity updatedEntity = testEntityRepository.findById(1L).orElseThrow();
+        assertEquals("Updated Name 1", updatedEntity.getName());
+        TestEntity stillOriginalEntity = testEntityRepository.findById(2L).orElseThrow();
+        assertEquals("Original Name 2", stillOriginalEntity.getName());
+        assertTrue(testEntityRepository.existsById(3L));
+    }
+
+    @Test
+    void shouldHandleBatchMergeWithEmptyList() {
+        // Given
+        List<TestEntity> initialEntities = LongStream.rangeClosed(1, 3)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(initialEntities);
+        assertEquals(3, testEntityRepository.retrieveAll().size());
+
+        // When
+        testEntityRepository.batchMerge(List.of());
+
+        // Then
+        assertEquals(3, testEntityRepository.retrieveAll().size()); // No change
+    }
 }
+
