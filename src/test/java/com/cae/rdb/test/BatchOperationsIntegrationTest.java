@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class BatchDeleteIntegrationTest {
+public class BatchOperationsIntegrationTest {
 
     private static EntityManagerFactory entityManagerFactory;
     private TestEntityRepository testEntityRepository;
@@ -160,5 +160,43 @@ public class BatchDeleteIntegrationTest {
         assertFalse(testEntityRepository.existsById(2L));
         assertTrue(testEntityRepository.existsById(1L));
         assertTrue(testEntityRepository.existsById(3L));
+    }
+
+    @Test
+    void shouldBatchCreateEntities() {
+        // Given
+        List<TestEntity> entitiesToCreate = LongStream.rangeClosed(10, 15)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Batch Created Entity " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+
+        // When
+        testEntityRepository.batchCreate(entitiesToCreate);
+
+        // Then
+        assertEquals(6, testEntityRepository.retrieveAll().size()); // 6 entities (10-15 inclusive)
+        assertTrue(testEntityRepository.existsById(10L));
+        assertTrue(testEntityRepository.existsById(11L));
+        assertTrue(testEntityRepository.existsById(12L));
+        assertTrue(testEntityRepository.existsById(13L));
+        assertTrue(testEntityRepository.existsById(14L));
+        assertTrue(testEntityRepository.existsById(15L));
+    }
+
+    @Test
+    void shouldHandleBatchCreateWithEmptyList() {
+        // Given
+        assertEquals(0, testEntityRepository.retrieveAll().size());
+        List<TestEntity> emptyList = List.of();
+
+        // When
+        testEntityRepository.batchCreate(emptyList);
+
+        // Then
+        assertEquals(0, testEntityRepository.retrieveAll().size()); // No change expected
     }
 }
