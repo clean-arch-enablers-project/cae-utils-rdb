@@ -203,7 +203,10 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
             for (java.lang.reflect.Field field : currentClass.getDeclaredFields()) {
                 if (field.isAnnotationPresent(Id.class)) {
                     if (field.isAnnotationPresent(Column.class)) {
-                        return field.getAnnotation(Column.class).name();
+                        var name = field.getAnnotation(Column.class).name();
+                        if (!name.isEmpty()) {
+                            return name;
+                        }
                     }
                     return field.getName();
                 }
