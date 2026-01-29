@@ -14,4 +14,6 @@ public interface UpdateOperation <E, I>{
 
     List<E> batchMerge(List<E> instances);
     List<E> batchMerge(List<E> instances, ExecutionContext executionContext);
+    void batchPatch(List<I> primaryKey, Consumer<List<E>> patchingActions);
+    void batchPatch(List<I> primaryKey, Consumer<List<E>> patchingActions, ExecutionContext executionContext);
 }

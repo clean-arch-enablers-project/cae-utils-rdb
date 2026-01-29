@@ -350,6 +350,39 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
         this.writeOnSharedManager(this.getPatchingActionFor(primaryKey, patchingAction), executionContext);
     }
 
+    protected Consumer<EntityManager> getBatchPatchingActionFor(List<I> primaryKeys, Consumer<List<T>> patchingActions){
+        return manager -> {
+            if (primaryKeys == null || primaryKeys.isEmpty()) {
+                return;
+            }
+            if (this.idFieldName == null) {
+                this.idFieldName = this.findIdFieldName();
+            }
+            var hql = "FROM " + this.entityName + " e WHERE e." + this.idFieldName + " IN (:ids)";
+            List<T> instances = manager.createQuery(hql, this.entityType)
+                    .setParameter("ids", primaryKeys)
+                    .getResultList();
+
+            if (instances.size() != primaryKeys.size()) {
+                throw new InternalMappedException(
+                    "Couldn't patch all instances",
+                    "Some instances corresponding to provided IDs were not found."
+                );
+            }
+            patchingActions.accept(instances);
+        };
+    }
+
+    @Override
+    public void batchPatch(List<I> primaryKey, Consumer<List<T>> patchingActions) {
+        this.writeOnStandaloneManager(this.getBatchPatchingActionFor(primaryKey, patchingActions));
+    }
+
+    @Override
+    public void batchPatch(List<I> primaryKey, Consumer<List<T>> patchingActions, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchPatchingActionFor(primaryKey, patchingActions), executionContext);
+    }
+
     protected EntityManager initializeEntityManager(){
         return this.getEntityManagerFactoryOrThrow().createEntityManager();
     }
