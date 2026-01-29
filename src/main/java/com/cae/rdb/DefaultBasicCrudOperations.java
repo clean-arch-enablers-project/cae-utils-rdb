@@ -13,6 +13,8 @@ import lombok.Getter;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -148,7 +150,7 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
                 manager.persist(instances.get(i));
                 if (i > 0 && i % batchSize == 0) {
                     manager.flush();
-                    manager.close();
+                    manager.clear();
                 }
             }
         };
@@ -162,6 +164,37 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Override
     public void batchCreate(List<T> instances, ExecutionContext executionContext) {
         this.writeOnSharedManager(this.getBatchCreatingActionFor(instances), executionContext);
+    }
+
+    protected Function<EntityManager, List<T>> getBatchMergingActionFor(List<T> instances) {
+        return manager -> {
+            if (instances == null || instances.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            final int batchSize = 30;
+            List<T> mergedInstances = new ArrayList<>();
+
+            for (int i = 0; i < instances.size(); i++) {
+                mergedInstances.add(manager.merge(instances.get(i)));
+
+                if ((i + 1) % batchSize == 0) {
+                    manager.flush();
+                    manager.clear();
+                }
+            }
+            return mergedInstances;
+        };
+    }
+
+    @Override
+    public List<T> batchMerge(List<T> instances, ExecutionContext executionContext) {
+        return this.writeOnSharedManagerReturning(this.getBatchMergingActionFor(instances), executionContext);
+    }
+
+    @Override
+    public List<T> batchMerge(List<T> instances) {
+        return this.writeOnStandaloneManagerReturning(this.getBatchMergingActionFor(instances));
     }
 
     private String findIdFieldName() {
