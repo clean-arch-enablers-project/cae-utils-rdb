@@ -15,9 +15,7 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class BatchOperationsIntegrationTest {
 
@@ -280,5 +278,86 @@ public class BatchOperationsIntegrationTest {
         // Then
         assertEquals(3, testEntityRepository.retrieveAll().size()); // No change
     }
-}
 
+    @Test
+    void shouldBatchPatchEntities() {
+        // Given
+        List<TestEntity> entitiesToCreate = LongStream.rangeClosed(1, 3)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(entitiesToCreate);
+
+        List<Long> idsToPatch = List.of(1L, 3L);
+        String newName = "Patched Name";
+
+        // When
+        testEntityRepository.batchPatch(idsToPatch, entities ->
+                entities.forEach(entity -> entity.setName(newName))
+        );
+
+        // Then
+        TestEntity patchedEntity1 = testEntityRepository.findById(1L).orElseThrow();
+        assertEquals(newName, patchedEntity1.getName());
+
+        TestEntity unpatchedEntity2 = testEntityRepository.findById(2L).orElseThrow();
+        assertEquals("Original Name 2", unpatchedEntity2.getName());
+
+        TestEntity patchedEntity3 = testEntityRepository.findById(3L).orElseThrow();
+        assertEquals(newName, patchedEntity3.getName());
+    }
+
+    @Test
+    void shouldHandleBatchPatchWithEmptyList() {
+        // Given
+        List<TestEntity> initialEntities = LongStream.rangeClosed(1, 3)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(initialEntities);
+        assertEquals(3, testEntityRepository.retrieveAll().size());
+
+        // When
+        testEntityRepository.batchPatch(List.of(), entities ->
+                entities.forEach(e -> e.setName("This should not happen"))
+        );
+
+        // Then
+        assertEquals(3, testEntityRepository.retrieveAll().size());
+        assertEquals("Original Name 1", testEntityRepository.findById(1L).get().getName());
+        assertEquals("Original Name 2", testEntityRepository.findById(2L).get().getName());
+        assertEquals("Original Name 3", testEntityRepository.findById(3L).get().getName());
+    }
+
+    @Test
+    void shouldThrowExceptionForBatchPatchWithNonExistentIds() {
+        // Given
+        List<TestEntity> entitiesToCreate = LongStream.rangeClosed(1, 2)
+                .mapToObj(id -> {
+                    TestEntity entity = new TestEntity();
+                    entity.setId(id);
+                    entity.setName("Original Name " + id);
+                    return entity;
+                })
+                .collect(Collectors.toList());
+        testEntityRepository.batchCreate(entitiesToCreate);
+
+        List<Long> idsToPatch = List.of(1L, 99L); // 99L does not exist
+
+        // When & Then
+                var exception = assertThrows(com.cae.mapped_exceptions.specifics.InternalMappedException.class, () ->
+                        testEntityRepository.batchPatch(idsToPatch, entities ->
+                                entities.forEach(e -> e.setName("Patched Name"))
+                        )
+                );
+                assertTrue(exception.getDetails().get().contains("Some instances corresponding to provided IDs were not found"));
+    }
+}
