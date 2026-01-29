@@ -7,10 +7,7 @@ import com.cae.mapped_exceptions.specifics.InternalMappedException;
 import com.cae.rdb.operations.BasicCrudOperations;
 import com.cae.rdb.queries.Param;
 import com.cae.rdb.tables.TableSchema;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 
@@ -63,6 +60,8 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Getter(AccessLevel.PROTECTED)
     protected String entityName;
 
+    private String idFieldName;
+
     protected EntityManagerFactory entityManagerFactory;
 
     protected EntityManagerFactory getEntityManagerFactoryOrThrow(){
@@ -110,6 +109,50 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Override
     public void deleteById(I primaryKey, ExecutionContext executionContext) {
         this.writeOnSharedManager(this.getDeletingActionFor(primaryKey), executionContext);
+    }
+
+    protected Consumer<EntityManager> getBatchDeletingActionFor(List<I> ids){
+        return manager -> {
+            if (ids == null || ids.isEmpty()) {
+                return;
+            }
+            if (this.idFieldName == null) {
+                this.idFieldName = this.findIdFieldName();
+            }
+            var hql = "DELETE FROM " + this.entityName + " e WHERE e." + this.idFieldName + " IN (:ids)";
+            manager.createQuery(hql)
+                    .setParameter("ids", ids)
+                    .executeUpdate();
+        };
+    }
+
+    @Override
+    public void batchDelete(List<I> ids) {
+        this.writeOnStandaloneManager(this.getBatchDeletingActionFor(ids));
+    }
+
+    @Override
+    public void batchDelete(List<I> ids, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchDeletingActionFor(ids), executionContext);
+    }
+
+    private String findIdFieldName() {
+        Class<?> currentClass = this.entityType;
+        while (currentClass != null) {
+            for (java.lang.reflect.Field field : currentClass.getDeclaredFields()) {
+                if (field.isAnnotationPresent(Id.class)) {
+                    if (field.isAnnotationPresent(Column.class)) {
+                        return field.getAnnotation(Column.class).name();
+                    }
+                    return field.getName();
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        throw new InternalMappedException(
+                "Couldn't find @Id annotation for entity " + this.entityType.getSimpleName(),
+                "No field is annotated with @Id in the entity class or its superclasses. This is required for batch operations."
+        );
     }
 
     protected Function<EntityManager, Optional<T>> getFindingByIdActionFor(I primaryKey){
