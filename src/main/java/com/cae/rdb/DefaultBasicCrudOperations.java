@@ -7,15 +7,15 @@ import com.cae.mapped_exceptions.specifics.InternalMappedException;
 import com.cae.rdb.operations.BasicCrudOperations;
 import com.cae.rdb.queries.Param;
 import com.cae.rdb.tables.TableSchema;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -62,6 +62,8 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     protected Class<T> entityType;
     @Getter(AccessLevel.PROTECTED)
     protected String entityName;
+
+    private String idFieldName;
 
     protected EntityManagerFactory entityManagerFactory;
 
@@ -110,6 +112,112 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Override
     public void deleteById(I primaryKey, ExecutionContext executionContext) {
         this.writeOnSharedManager(this.getDeletingActionFor(primaryKey), executionContext);
+    }
+
+    protected Consumer<EntityManager> getBatchDeletingActionFor(List<I> ids){
+        return manager -> {
+            if (ids == null || ids.isEmpty()) {
+                return;
+            }
+            if (this.idFieldName == null) {
+                this.idFieldName = this.findIdFieldName();
+            }
+            var hql = "DELETE FROM " + this.entityName + " e WHERE e." + this.idFieldName + " IN (:ids)";
+            manager.createQuery(hql)
+                    .setParameter("ids", ids)
+                    .executeUpdate();
+        };
+    }
+
+    @Override
+    public void batchDelete(List<I> ids) {
+        this.writeOnStandaloneManager(this.getBatchDeletingActionFor(ids));
+    }
+
+    @Override
+    public void batchDelete(List<I> ids, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchDeletingActionFor(ids), executionContext);
+    }
+
+    protected Consumer<EntityManager> getBatchCreatingActionFor(List<T> instances) {
+        return manager -> {
+            if (instances == null || instances.isEmpty()) {
+                return;
+            }
+
+            final int batchSize = 30;
+
+            for (int i = 0; i < instances.size(); i++) {
+                manager.persist(instances.get(i));
+                if (i > 0 && i % batchSize == 0) {
+                    manager.flush();
+                    manager.clear();
+                }
+            }
+        };
+    }
+
+    @Override
+    public void batchCreate(List<T> instances) {
+        this.writeOnStandaloneManager(this.getBatchCreatingActionFor(instances));
+    }
+
+    @Override
+    public void batchCreate(List<T> instances, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchCreatingActionFor(instances), executionContext);
+    }
+
+    protected Function<EntityManager, List<T>> getBatchMergingActionFor(List<T> instances) {
+        return manager -> {
+            if (instances == null || instances.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            final int batchSize = 30;
+            List<T> mergedInstances = new ArrayList<>();
+
+            for (int i = 0; i < instances.size(); i++) {
+                mergedInstances.add(manager.merge(instances.get(i)));
+
+                if ((i + 1) % batchSize == 0) {
+                    manager.flush();
+                    manager.clear();
+                }
+            }
+            return mergedInstances;
+        };
+    }
+
+    @Override
+    public List<T> batchMerge(List<T> instances, ExecutionContext executionContext) {
+        return this.writeOnSharedManagerReturning(this.getBatchMergingActionFor(instances), executionContext);
+    }
+
+    @Override
+    public List<T> batchMerge(List<T> instances) {
+        return this.writeOnStandaloneManagerReturning(this.getBatchMergingActionFor(instances));
+    }
+
+    private String findIdFieldName() {
+        Class<?> currentClass = this.entityType;
+        while (currentClass != null) {
+            for (Field field : currentClass.getDeclaredFields()) {
+                if (field.isAnnotationPresent(Id.class)) {
+                    if (field.isAnnotationPresent(Column.class)) {
+                        var name = field.getAnnotation(Column.class).name();
+                        if (!name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                    return field.getName();
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        throw new InternalMappedException(
+                "Couldn't find @Id annotation for entity " + this.entityType.getSimpleName(),
+                "No field is annotated with @Id in the entity class or its superclasses. This is required for batch operations."
+        );
     }
 
     protected Function<EntityManager, Optional<T>> getFindingByIdActionFor(I primaryKey){
@@ -240,6 +348,39 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Override
     public void patch(I primaryKey, Consumer<T> patchingAction, ExecutionContext executionContext){
         this.writeOnSharedManager(this.getPatchingActionFor(primaryKey, patchingAction), executionContext);
+    }
+
+    protected Consumer<EntityManager> getBatchPatchingActionFor(List<I> primaryKeys, Consumer<List<T>> patchingActions){
+        return manager -> {
+            if (primaryKeys == null || primaryKeys.isEmpty()) {
+                return;
+            }
+            if (this.idFieldName == null) {
+                this.idFieldName = this.findIdFieldName();
+            }
+            var hql = "FROM " + this.entityName + " e WHERE e." + this.idFieldName + " IN (:ids)";
+            List<T> instances = manager.createQuery(hql, this.entityType)
+                    .setParameter("ids", primaryKeys)
+                    .getResultList();
+
+            if (instances.size() != primaryKeys.size()) {
+                throw new InternalMappedException(
+                    "Couldn't patch all instances",
+                    "Some instances corresponding to provided IDs were not found."
+                );
+            }
+            patchingActions.accept(instances);
+        };
+    }
+
+    @Override
+    public void batchPatch(List<I> primaryKey, Consumer<List<T>> patchingActions) {
+        this.writeOnStandaloneManager(this.getBatchPatchingActionFor(primaryKey, patchingActions));
+    }
+
+    @Override
+    public void batchPatch(List<I> primaryKey, Consumer<List<T>> patchingActions, ExecutionContext executionContext) {
+        this.writeOnSharedManager(this.getBatchPatchingActionFor(primaryKey, patchingActions), executionContext);
     }
 
     protected EntityManager initializeEntityManager(){
