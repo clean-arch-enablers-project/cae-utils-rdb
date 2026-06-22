@@ -1,13 +1,19 @@
 package com.cae.rdb;
 
-
 import com.cae.rdb.tables.OutboxItem;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import org.hibernate.LockMode;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
-public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I> extends DefaultBasicCrudOperations<T, I> {
+public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I>
+        extends DefaultBasicCrudOperations<T, I> {
 
-    protected DefaultBasicOutboxOperations(){
+    private static final String OUTBOX_EVENT_ALIAS = "outboxEvent";
+
+    protected DefaultBasicOutboxOperations() {
         DefaultBasicCrudOperations.mapGenericTypes(this);
         DefaultBasicCrudOperations.registerEntity(this);
     }
@@ -15,37 +21,146 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I> e
     public List<T> getAvailableBatch(int batchSize) {
         return this.writeOnStandaloneManagerReturning(entityManager -> {
             if (batchSize <= 0) return List.of();
-            var selectSql = this.generateSelectForUpdateSkippingLockedItemsCommandInNativeSql();
-            var outboxEventIds = entityManager.createNativeQuery(selectSql)
-                    .setParameter(1, this.getTtlSeconds())
-                    .setParameter(2, batchSize)
-                    .getResultList();
-            if (outboxEventIds.isEmpty()) return List.of();
-            var updateSql = this.generateUpdateItemsToClaimedCommandInNativeSql();
-            entityManager.createNativeQuery(updateSql)
+
+            String entityName = this.resolveHqlEntityName(entityManager);
+
+            Object claimedValue = this.resolveOutboxEventClaimedValue(entityManager);
+            Object notClaimedValue = this.resolveOutboxEventNotClaimedValue(entityManager);
+
+            TypedQuery<T> jpaSelectQuery = entityManager
+                    .createQuery(this.generateSelectAvailableItemsCommandInHql(entityName), this.getEntityType());
+
+            jpaSelectQuery.setParameter("claimedValue", claimedValue);
+            jpaSelectQuery.setParameter("notClaimedValue", notClaimedValue);
+            jpaSelectQuery.setParameter("ttlSeconds", this.getTtlSeconds());
+            jpaSelectQuery.setMaxResults(batchSize);
+
+            @SuppressWarnings("unchecked")
+            org.hibernate.query.Query<T> hibernateSelectQuery =
+                    jpaSelectQuery.unwrap(org.hibernate.query.Query.class);
+
+            hibernateSelectQuery.setLockMode(OUTBOX_EVENT_ALIAS, LockMode.UPGRADE_SKIPLOCKED);
+
+            List<T> lockedEvents = hibernateSelectQuery.getResultList();
+
+            if (lockedEvents.isEmpty()) return List.of();
+
+            List<I> outboxEventIds = lockedEvents.stream()
+                    .map(this::getOutboxEventId)
+                    .collect(Collectors.toList());
+
+            entityManager.createQuery(this.generateUpdateItemsToClaimedCommandInHql(entityName))
+                    .setParameter("claimedValue", claimedValue)
                     .setParameter("outboxEventIds", outboxEventIds)
                     .executeUpdate();
-            var fetchSql = this.generateFinalFetchCommandInNativeSql();
-            @SuppressWarnings("unchecked")
-            var events = (List<T>) entityManager.createNativeQuery(fetchSql, this.getEntityType())
+
+            /*
+             * HQL bulk updates bypass already-managed entity instances.
+             * We selected the rows before updating them, so those instances may now be stale.
+             * Clearing guarantees the final fetch sees the DB-updated claimed flag and claimedAt timestamp.
+             */
+            entityManager.clear();
+
+            return entityManager
+                    .createQuery(this.generateFinalFetchCommandInHql(entityName), this.getEntityType())
                     .setParameter("outboxEventIds", outboxEventIds)
                     .getResultList();
-            return events;
         });
     }
 
     protected abstract int getTtlSeconds();
 
-    protected String generateSelectForUpdateSkippingLockedItemsCommandInNativeSql(){
-        return "SELECT outboxEventId FROM "+ this.getEntityName() +" WHERE outboxEventClaimed = 0 OR (outboxEventClaimed = 1 AND outboxEventClaimedAt < (NOW(6) - INTERVAL ? SECOND)) ORDER BY outboxEventInsertedAt LIMIT ? FOR UPDATE SKIP LOCKED";
+    protected I getOutboxEventId(T outboxEvent) {
+        return outboxEvent.getOutboxEventId();
     }
 
-    protected String generateUpdateItemsToClaimedCommandInNativeSql(){
-        return "UPDATE "+ this.getEntityName() +" SET outboxEventClaimed = 1, outboxEventClaimedAt = NOW(6) WHERE outboxEventId IN (:outboxEventIds)";
+    protected String generateSelectAvailableItemsCommandInHql(String entityName) {
+        return "SELECT " + OUTBOX_EVENT_ALIAS + " " +
+                "FROM " + entityName + " " + OUTBOX_EVENT_ALIAS + " " +
+                "WHERE (" +
+                "       " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :notClaimedValue " +
+                "       OR (" +
+                "              " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :claimedValue " +
+                "              AND " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " < current_timestamp - (:ttlSeconds * 1 second)" +
+                "          )" +
+                "      ) " +
+                "ORDER BY " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventInsertedAtAttributeName();
     }
 
-    protected String generateFinalFetchCommandInNativeSql(){
-        return "SELECT * FROM "+ this.getEntityName() +" WHERE outboxEventId IN (:outboxEventIds)";
+    protected String generateUpdateItemsToClaimedCommandInHql(String entityName) {
+        return "UPDATE " + entityName + " " + OUTBOX_EVENT_ALIAS + " " +
+                "SET " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :claimedValue, " +
+                "    " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " = current_timestamp " +
+                "WHERE " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventIdAttributeName() + " IN :outboxEventIds";
     }
 
+    protected String generateFinalFetchCommandInHql(String entityName) {
+        return "SELECT " + OUTBOX_EVENT_ALIAS + " " +
+                "FROM " + entityName + " " + OUTBOX_EVENT_ALIAS + " " +
+                "WHERE " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventIdAttributeName() + " IN :outboxEventIds";
+    }
+
+    protected String resolveHqlEntityName(EntityManager entityManager) {
+        return entityManager
+                .getMetamodel()
+                .entity(this.getEntityType())
+                .getName();
+    }
+
+    protected Object resolveOutboxEventClaimedValue(EntityManager entityManager) {
+        return this.resolveClaimedAttributeValue(entityManager, true);
+    }
+
+    protected Object resolveOutboxEventNotClaimedValue(EntityManager entityManager) {
+        return this.resolveClaimedAttributeValue(entityManager, false);
+    }
+
+    protected Object resolveClaimedAttributeValue(EntityManager entityManager, boolean claimed) {
+        Class<?> claimedAttributeType = entityManager
+                .getMetamodel()
+                .entity(this.getEntityType())
+                .getAttribute(this.getOutboxEventClaimedAttributeName())
+                .getJavaType();
+
+        if (claimedAttributeType.equals(Boolean.class) || claimedAttributeType.equals(boolean.class)) {
+            return claimed;
+        }
+
+        if (claimedAttributeType.equals(Integer.class) || claimedAttributeType.equals(int.class)) {
+            return claimed ? 1 : 0;
+        }
+
+        if (claimedAttributeType.equals(Long.class) || claimedAttributeType.equals(long.class)) {
+            return claimed ? 1L : 0L;
+        }
+
+        if (claimedAttributeType.equals(Short.class) || claimedAttributeType.equals(short.class)) {
+            return claimed ? Short.valueOf((short) 1) : Short.valueOf((short) 0);
+        }
+
+        if (claimedAttributeType.equals(Byte.class) || claimedAttributeType.equals(byte.class)) {
+            return claimed ? Byte.valueOf((byte) 1) : Byte.valueOf((byte) 0);
+        }
+
+        throw new UnsupportedOperationException(
+                "Unsupported outbox claimed attribute type: " + claimedAttributeType.getName()
+                        + ". Supported types are Boolean, boolean, Integer, int, Long, long, Short, short, Byte and byte."
+        );
+    }
+
+    protected String getOutboxEventIdAttributeName() {
+        return "outboxEventId";
+    }
+
+    protected String getOutboxEventClaimedAttributeName() {
+        return "outboxEventClaimed";
+    }
+
+    protected String getOutboxEventClaimedAtAttributeName() {
+        return "outboxEventClaimedAt";
+    }
+
+    protected String getOutboxEventInsertedAtAttributeName() {
+        return "outboxEventInsertedAt";
+    }
 }
