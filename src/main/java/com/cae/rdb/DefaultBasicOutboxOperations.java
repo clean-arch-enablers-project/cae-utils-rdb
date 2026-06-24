@@ -5,6 +5,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import org.hibernate.LockMode;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,12 +28,15 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I>
             Object claimedValue = this.resolveOutboxEventClaimedValue(entityManager);
             Object notClaimedValue = this.resolveOutboxEventNotClaimedValue(entityManager);
 
+            Instant now = Instant.now();
+            Instant claimExpirationCutoff = now.minusSeconds(this.getTtlSeconds());
+
             TypedQuery<T> jpaSelectQuery = entityManager
                     .createQuery(this.generateSelectAvailableItemsCommandInHql(entityName), this.getEntityType());
 
             jpaSelectQuery.setParameter("claimedValue", claimedValue);
             jpaSelectQuery.setParameter("notClaimedValue", notClaimedValue);
-            jpaSelectQuery.setParameter("ttlSeconds", this.getTtlSeconds());
+            jpaSelectQuery.setParameter("claimExpirationCutoff", claimExpirationCutoff);
             jpaSelectQuery.setMaxResults(batchSize);
 
             @SuppressWarnings("unchecked")
@@ -51,6 +55,7 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I>
 
             entityManager.createQuery(this.generateUpdateItemsToClaimedCommandInHql(entityName))
                     .setParameter("claimedValue", claimedValue)
+                    .setParameter("claimedAt", now)
                     .setParameter("outboxEventIds", outboxEventIds)
                     .executeUpdate();
 
@@ -81,7 +86,7 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I>
                 "       " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :notClaimedValue " +
                 "       OR (" +
                 "              " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :claimedValue " +
-                "              AND " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " < current_timestamp - (:ttlSeconds * 1 second)" +
+                "              AND " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " < :claimExpirationCutoff" +
                 "          )" +
                 "      ) " +
                 "ORDER BY " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventInsertedAtAttributeName();
@@ -90,7 +95,7 @@ public abstract class DefaultBasicOutboxOperations<T extends OutboxItem<I>, I>
     protected String generateUpdateItemsToClaimedCommandInHql(String entityName) {
         return "UPDATE " + entityName + " " + OUTBOX_EVENT_ALIAS + " " +
                 "SET " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAttributeName() + " = :claimedValue, " +
-                "    " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " = current_timestamp " +
+                "    " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventClaimedAtAttributeName() + " = :claimedAt " +
                 "WHERE " + OUTBOX_EVENT_ALIAS + "." + this.getOutboxEventIdAttributeName() + " IN :outboxEventIds";
     }
 

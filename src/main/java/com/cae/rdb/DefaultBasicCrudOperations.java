@@ -7,10 +7,7 @@ import com.cae.mapped_exceptions.specifics.InternalMappedException;
 import com.cae.rdb.operations.BasicCrudOperations;
 import com.cae.rdb.queries.Param;
 import com.cae.rdb.tables.TableSchema;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 
@@ -119,6 +116,13 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
         };
     }
 
+    protected Function<EntityManager, Optional<T>> getFindingByIdForUpdateActionFor(I primaryKey){
+        return manager -> {
+            var instance = manager.find(this.entityType, primaryKey, LockModeType.PESSIMISTIC_WRITE);
+            return Optional.ofNullable(instance);
+        };
+    }
+
     @Override
     public Optional<T> findById(I primaryKey) {
         return this.readOnStandaloneManager(this.getFindingByIdActionFor(primaryKey));
@@ -132,6 +136,11 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
     @Override
     public Optional<T> findById(I primaryKey, ExecutionContext executionContext, boolean transactional) {
         return this.readOnSharedManager(this.getFindingByIdActionFor(primaryKey), executionContext, transactional);
+    }
+
+    @Override
+    public Optional<T> findByIdForUpdate(I primaryKey, ExecutionContext executionContext){
+        return this.readOnSharedManager(this.getFindingByIdForUpdateActionFor(primaryKey), executionContext, true);
     }
 
     @Override
@@ -382,6 +391,20 @@ public abstract class DefaultBasicCrudOperations<T extends TableSchema, I> imple
             return query.getResultList().stream().findFirst().orElse(null);
         };
         return Optional.ofNullable(this.readOnSharedManager(action, context, false));
+    }
+
+    protected Optional<T> readForUpdateOnSharedManagerReturningOptional(String jpql, List<Param> params, ExecutionContext context){
+        Function<EntityManager, T> action = em -> {
+            var query = em.createQuery(
+                    jpql,
+                    this.getEntityType()
+            );
+            query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
+            query.setMaxResults(1);
+            params.forEach(param -> query.setParameter(param.getField(), param.getValue()));
+            return query.getResultList().stream().findFirst().orElse(null);
+        };
+        return Optional.ofNullable(this.readOnSharedManager(action, context, true));
     }
 
     protected List<T> readOnSharedManagerReturningList(String jpql, List<Param> params, ExecutionContext context){

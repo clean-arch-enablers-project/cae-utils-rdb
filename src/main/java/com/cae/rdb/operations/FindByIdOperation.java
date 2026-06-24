@@ -9,6 +9,7 @@ public interface FindByIdOperation <E, I>{
     Optional<E> findById(I id);
     Optional<E> findById(I id, ExecutionContext executionContext);
     Optional<E> findById(I id, ExecutionContext executionContext, boolean transactional);
+    Optional<E> findByIdForUpdate(I id, ExecutionContext executionContext);
     boolean existsById(I id);
     boolean existsById(I id, ExecutionContext executionContext);
     boolean existsById(I id, ExecutionContext executionContext, boolean transactional);
